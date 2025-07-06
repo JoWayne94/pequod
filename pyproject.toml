@@ -1,0 +1,25 @@
+[project]
+name = "pypq"
+version = "1.0.0-dev"
+description = "Python PEQUOD - pypq - is the python components of the PEQUOD source code."
+readme = "README.md"
+authors = [
+    { name = "Jo Wayne Tan", email = "jo.tan17@imperial.ac.uk" },
+    { name = "Pavel Berloff", email = "p.berloff@imperial.ac.uk" },
+]
+
+# Prerequisites
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.26.4",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "matplotlib>=3.9.2",
+]

@@ -1,0 +1,10 @@
+# An example default parameters file
+
+domain = [[0.0, 1.0], [0.0, 1.0]]
+no_of_layers = 2
+t_end = 1.0
+Nx = 100
+Ny = 1
+spinup_period = 2
+schemes = ['FTBS', 'FTFS']
+cfl = 0.5
