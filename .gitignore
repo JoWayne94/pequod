@@ -2,19 +2,22 @@
 # Features in development
 manual/
 tutorials/
-src/pypq/CMM/
-src/pypq/HelmSolve/
+src/pequod/CMM/
+src/pequod/HelmSolve/
 
 # Fortran source code
 src/f90pq/
 
 # Personal files
-src/pypq/private/
+src/pequod/private/
+src/sandbox.py
 toml_example.py
 
 # Output files
+*.dat
 *.png
 *.gif
+*.mp4
 */frames
 
 # -------------- GENERAL --------------

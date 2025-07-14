@@ -1,6 +1,6 @@
 [project]
-name = "pypq"
-version = "1.0.0"
+name = "pequod"
+version = "1.0.dev0"
 description = "Python PEQUOD - pypq - is the python components of the PEQUOD source code."
 readme = "README.md"
 authors = [
