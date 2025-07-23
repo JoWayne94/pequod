@@ -4,10 +4,7 @@ Data class for a two-dimensional grid class object.
 Todo: 1. Implement setters and getters for all parameters
 """
 
-from .pq_types import *
-
-# from dataclasses import dataclass
-# from typing import Iterable, Iterator, Self, Sequence, overload
+from .pq_types import flt64, np, uint8, uint32  # noqa: F401
 
 
 class Grid(object):
@@ -90,6 +87,14 @@ class Grid(object):
     def get_y_coords(self) -> np.array:
         return self.m_y_coords
 
+    @property
+    def get_x_coords_faces(self) -> np.array:
+        return self.m_x_coords_adv
+
+    @property
+    def get_y_coords_faces(self) -> np.array:
+        return self.m_y_coords_adv
+
     def onion_indexing(self) -> np.ndarray:
         """
         Return labels of grid nodes in an onion indexed fashion.
@@ -131,7 +136,7 @@ class Grid(object):
                 num += 1
 
         # By default, row index i = 0 is at the bottom of the logical grid. To put row 0 at the top, flip vertically:
-        labels_flipped = np.flipud(labels)
+        # labels_flipped = np.flipud(labels)
 
         return labels
 

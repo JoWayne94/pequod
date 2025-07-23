@@ -18,7 +18,7 @@ toml_example.py
 *.png
 *.gif
 *.mp4
-*/frames
+*/data_dir
 
 # -------------- GENERAL --------------
 # Byte-compiled / optimised / DLL files

@@ -15,3 +15,5 @@ int32 = np.int32
 flt16 = np.float16
 flt32 = np.float32
 flt64 = np.float64
+
+eps64 = np.finfo(flt64).eps

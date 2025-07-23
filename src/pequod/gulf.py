@@ -1,12 +1,13 @@
 """
 The CABARET on a 2D ``Grid``.
 
-Todo: 1) Modify BCs to be functions instead of if statements
+Todo: 1) Write getters for solutions
 """
 
-from typing import Callable, Self
+from typing import Any, Self, Sequence
 
-from .grid import *
+from .grid import Grid, np, uint8
+from .pq_types import eps64
 
 
 class Gulf(Grid):
@@ -25,6 +26,17 @@ class Gulf(Grid):
         self.m_dt = 1.0
         self.m_cfl = 0.5
 
+        self.X, self.Y = np.meshgrid(self.get_x_coords, self.get_y_coords)
+        self.X_adv_x, self.Y_adv_x = np.meshgrid(
+            self.get_x_coords_faces, self.get_y_coords
+        )
+        self.X_adv_y, self.Y_adv_y = np.meshgrid(
+            self.get_x_coords, self.get_y_coords_faces
+        )
+
+        self.predictor = self.predictor_corrector(self.predictor)
+        self.corrector = self.predictor_corrector(self.corrector)
+
         # Boundary value problem (BVP) - default settings are doubly periodic
         self.m_boundary_conditions = ["Periodic", "Periodic", "Periodic", "Periodic"]
         self.m_boundary_values = [None, None, None, None]
@@ -35,12 +47,13 @@ class Gulf(Grid):
         # Advection-type data
         self.m_adv_x = np.zeros((2, self.m_nvars, self.m_ny, self.m_nx_adv))
         self.m_adv_y = np.zeros((2, self.m_nvars, self.m_ny_adv, self.m_nx))
-
         self.m_adv_vel = None
 
-        self.X, self.Y = np.meshgrid(self.get_x_coords, self.get_y_coords)
-        self.X_adv_x, self.Y_adv_x = np.meshgrid(self.m_x_coords_adv, self.get_y_coords)
-        self.X_adv_y, self.Y_adv_y = np.meshgrid(self.get_x_coords, self.m_y_coords_adv)
+        # Nonlinear flux correction variables
+        self.numerical_fluxes = None
+        self._M_x, self._m_x, self._M_y, self._m_y = None, None, None, None
+        self._Q_x = np.empty_like(self.m_cons)
+        self._Q_y = np.empty_like(self.m_cons)
 
     @property
     def nvars(self):
@@ -61,7 +74,7 @@ class Gulf(Grid):
     def dt(self):
         """
         Getter for the time-step size.
-        :return: Time step size.
+        :return: Time-step size.
         """
         return self.m_dt
 
@@ -160,107 +173,220 @@ class Gulf(Grid):
                     f" The {b_names[i]} boundary is Periodic. Boundary data assigned will be overwritten. "
                 )
 
-    def enforce_boundary_conditions(self) -> None:
+    def enforce_boundary_conditions(
+        self,
+        periodic_x: Sequence[Any] = None,
+        periodic_y: Sequence[Any] = None,
+        internal_x: Sequence[Any] = None,
+        internal_y: Sequence[Any] = None,
+        dirichlet: tuple[
+            Sequence[Any], Sequence[Any], Sequence[Any], Sequence[Any]
+        ] = None,
+        neumann: tuple[
+            Sequence[Any], Sequence[Any], Sequence[Any], Sequence[Any]
+        ] = None,
+    ) -> None:
         """
         Enforce boundary conditions in the following order: West -> East -> South -> North.
         :return: None
         """
 
-        # Periodic BCs with upwind flux
+        flux_funcs = []
+
         if self.m_boundary_conditions[0] == self.m_boundary_conditions[2] == "Periodic":
-            mask = self.m_adv_vel[0][..., 0] > 0.0
-            self.m_adv_x[0, ..., 0][mask] = self.m_adv_x[1, ..., -1][mask].copy()
-            # self.m_adv_x[0, ..., -1][~mask] = self.m_adv_x[1, ..., 0][~mask].copy()
-            self.m_adv_x[0, ..., -1] = self.m_adv_x[0, ..., 0].copy()
+            if periodic_x is not None:
+                flux_funcs.append(*periodic_x)
+            flux_funcs.append(self.numerical_flux_periodic_x)
 
         else:
+            if internal_x is not None:
+                flux_funcs.append(*internal_x)
+            flux_funcs.append(self.numerical_flux_x)
+
             for i in (0, 2):
                 bi = -(i != 0)
 
                 if self.m_boundary_conditions[i] == "Dirichlet":
-                    self.m_adv_x[0, ..., bi] = self.m_boundary_values[i] * np.ones(
-                        self.m_ny
-                    )
+                    if dirichlet is not None:
+                        flux_funcs.append(*dirichlet[i])
+
+                    def dirichlet_x(tmp_i=i, tmp_bi=bi):
+                        self.m_adv_x[0, ..., tmp_bi] = self.m_boundary_values[
+                            tmp_i
+                        ] * np.ones(self.m_ny)
+
+                    flux_funcs.append(dirichlet_x)
+
                 else:
-                    continue
+                    if neumann is not None:
+                        flux_funcs.append(*neumann[i])
+
+                    def neumann_x(tmp_bi=bi):
+                        if tmp_bi != 0:
+                            self.m_adv_x[0, ..., -1] = self.m_adv_x[1, ..., -1].copy()
+
+                    flux_funcs.append(neumann_x)
 
         if self.m_boundary_conditions[1] == self.m_boundary_conditions[3] == "Periodic":
-            mask = self.m_adv_vel[1][..., 0, :] > 0.0
-            self.m_adv_y[0, ..., 0, :][mask] = self.m_adv_y[1, ..., -1, :][mask].copy()
-            # self.m_adv_y[0, ..., -1, :][~mask] = self.m_adv_y[1, ..., 0, :][~mask].copy()
-            self.m_adv_y[0, ..., -1, :] = self.m_adv_y[0, ..., 0, :].copy()
+            if periodic_y is not None:
+                flux_funcs.append(*periodic_y)
+            flux_funcs.append(self.numerical_flux_periodic_y)
 
         else:
+            if internal_y is not None:
+                flux_funcs.append(*internal_y)
+            flux_funcs.append(self.numerical_flux_y)
+
             for i in (1, 3):
-                bi = -(i - 1 != 0)
+                bi = (i == 1) - 1
 
                 if self.m_boundary_conditions[i] == "Dirichlet":
-                    self.m_adv_y[0, ..., bi, :] = self.m_boundary_values[i] * np.ones(
-                        self.m_nx
-                    )
+                    if dirichlet is not None:
+                        flux_funcs.append(*dirichlet[i])
+
+                    def dirichlet_y(tmp_i=i, tmp_bi=bi):
+                        self.m_adv_y[0, ..., tmp_bi, :] = self.m_boundary_values[
+                            tmp_i
+                        ] * np.ones(self.m_nx)
+
+                    flux_funcs.append(dirichlet_y)
+
                 else:
-                    continue
+                    if neumann is not None:
+                        flux_funcs.append(*neumann[i])
+
+                    def neumann_y(tmp_bi=bi):
+                        if tmp_bi != 0:
+                            self.m_adv_y[0, ..., -1, :] = self.m_adv_y[
+                                1, ..., -1, :
+                            ].copy()
+
+                    flux_funcs.append(neumann_y)
+
+        self.numerical_fluxes = lambda: [update_flux() for update_flux in flux_funcs]
 
     """ End of BVP methods and start of CABARET routines. """
 
-    def set_advection_velocity(
-        self, value: tuple[float | np.ndarray, float | np.ndarray]
-    ):
-        # if type(value[0] == np.ndarray):
-        #     assert value[0].ndim == 2
-        #     assert value[0].shape == (self.m_nx_adv, self.m_ny)
-        # if type(value[1] == np.ndarray):
-        #     assert value[1].ndim == 2
-        #     assert value[1].shape == (self.m_nx, self.m_ny_adv)
+    def physical_flux(self):
+        """
+        Template of physical fluxes for subclass solvers.
+        :return: Convert advection-type data to flux values.
+        """
+        return self.m_adv_x[0], self.m_adv_y[0]
 
-        self.m_adv_vel = (
-            np.expand_dims(np.asarray(value[0], dtype=flt64).T, 0),
-            np.expand_dims(np.asarray(value[1], dtype=flt64).T, 0),
+    def predictor_corrector(self, func):
+        def wrapper() -> None:
+            f_x, f_y = self.physical_flux()
+
+            self._Q_x = (-f_x[..., 1:] + f_x[..., :-1]) / self.m_dx
+            self._Q_y = (-f_y[..., 1:, :] + f_y[..., :-1, :]) / self.m_dy
+
+            self.m_cons += 0.5 * self.dt * (self._Q_x + self._Q_y)  # .copy()
+
+            func()
+
+        return wrapper
+
+    def predictor(self):
+        """
+        Compute M and m values required for nonlinear flux correction after the predictor step.
+        :return: None
+        """
+        self._M_x = np.maximum.reduce(
+            [self.m_adv_x[0, ..., :-1], self.m_cons, self.m_adv_x[0, ..., 1:]]
+        )
+        self._m_x = np.minimum.reduce(
+            [self.m_adv_x[0, ..., :-1], self.m_cons, self.m_adv_x[0, ..., 1:]]
+        )
+        self._M_y = np.maximum.reduce(
+            [self.m_adv_y[0, ..., :-1, :], self.m_cons, self.m_adv_y[0, ..., 1:, :]]
+        )
+        self._m_y = np.minimum.reduce(
+            [self.m_adv_y[0, ..., :-1, :], self.m_cons, self.m_adv_y[0, ..., 1:, :]]
         )
 
-    def adv_to_flux(self):
-        """
-        Convert advection-type data to flux values.
-        :return:
-        """
-        return self.m_adv_x[0] * self.m_adv_vel[0], self.m_adv_y[0] * self.m_adv_vel[1]
+        self._M_x += self.dt * self._Q_y
+        self._m_x += self.dt * self._Q_y
+        self._M_y += self.dt * self._Q_x
+        self._m_y += self.dt * self._Q_x
 
-    def predictor_corrector(self) -> None:
-        f_x, f_y = self.adv_to_flux()
-
-        self.m_cons += (
-            0.5
-            * self.dt
-            * (
-                (-f_x[..., 1:] + f_x[..., :-1]) / self.m_dx
-                + (-f_y[..., 1:, :] + f_y[..., :-1, :]) / self.m_dy
-            )
-        )
+    def corrector(self):
+        pass
 
     def second_order_extrapolation(self) -> None:
         # Extrapolate from the west/south
-        self.m_adv_x[1, ..., 1:] = (
-            2.0 * self.m_cons - self.m_adv_x[0, ..., :-1]
-        )  # .copy()
+        self.m_adv_x[1, ..., 1:] = 2.0 * self.m_cons - self.m_adv_x[0, ..., :-1]
         self.m_adv_y[1, ..., 1:, :] = 2.0 * self.m_cons - self.m_adv_y[0, ..., :-1, :]
 
         # Extrapolate from the east/north
-        self.m_adv_x[0, ..., :-1] = 2.0 * self.m_cons - self.m_adv_x[0, ..., 1:]
-        self.m_adv_y[0, ..., :-1, :] = 2.0 * self.m_cons - self.m_adv_y[0, ..., 1:, :]
+        self.m_adv_x[0, ..., :-1] = 2.0 * self.m_cons - self.m_adv_x[0, ..., 1:].copy()
+        self.m_adv_y[0, ..., :-1, :] = (
+            2.0 * self.m_cons - self.m_adv_y[0, ..., 1:, :].copy()
+        )
 
-    def nonlinear_flux_correction(self) -> None:
-        pass
+        # Upper and lower bounds from the maximum principle
+        self.m_adv_x[1, ..., 1:] = np.clip(
+            self.m_adv_x[1, ..., 1:], self._m_x + eps64, self._M_x - eps64
+        )
+        self.m_adv_x[0, ..., :-1] = np.clip(
+            self.m_adv_x[0, ..., :-1], self._m_x + eps64, self._M_x - eps64
+        )
 
-    def numerical_flux(self) -> None:
+        self.m_adv_y[1, ..., 1:, :] = np.clip(
+            self.m_adv_y[1, ..., 1:, :], self._m_y + eps64, self._M_y - eps64
+        )
+        self.m_adv_y[0, ..., :-1, :] = np.clip(
+            self.m_adv_y[0, ..., :-1, :], self._m_y + eps64, self._M_y - eps64
+        )
+
+    """ Numerical flux methods. """
+
+    def numerical_flux_x(self) -> None:
         """
-        Upwind flux calculations.
+        Upwind flux calculations for internal cell faces in the x-direction.
         :return: None
         """
-
         # Update in x-direction
         mask = self.m_adv_vel[0][..., 1:-1] > 0.0
         self.m_adv_x[0, ..., 1:-1][mask] = self.m_adv_x[1, ..., 1:-1][mask]  # .copy()
 
+    def numerical_flux_y(self) -> None:
+        """
+        Upwind flux calculations for internal cell faces in the y-direction.
+        :return: None
+        """
         # Update in y-direction
         mask = self.m_adv_vel[1][..., 1:-1, :] > 0.0
         self.m_adv_y[0, ..., 1:-1, :][mask] = self.m_adv_y[1, ..., 1:-1, :][mask]
+
+    def numerical_flux_periodic_x(self) -> None:
+        """
+        Upwind flux calculations in the x-direction with periodic boundary conditions.
+        :return: None
+        """
+        # Update in x-direction
+        mask = self.m_adv_vel[0][..., :-1] > 0.0
+        self.m_adv_x[0, ..., :-1][mask] = np.roll(self.m_adv_x[1, ..., 1:], 1, axis=-1)[
+            mask
+        ]  # .copy()
+
+        # Periodic BC
+        self.m_adv_x[0, ..., -1] = self.m_adv_x[0, ..., 0].copy()
+
+    def numerical_flux_periodic_y(self) -> None:
+        """
+        Upwind flux calculations in the y-direction with periodic boundary conditions.
+        :return: None
+        """
+        # Update in y-direction
+        mask = self.m_adv_vel[1][..., :-1, :] > 0.0
+        self.m_adv_y[0, ..., :-1, :][mask] = np.roll(
+            self.m_adv_y[1, ..., 1:, :], 1, axis=-2
+        )[mask]
+
+        # Periodic BC
+        self.m_adv_y[0, ..., -1, :] = self.m_adv_y[0, ..., 0, :].copy()
+
+    def nonlinear_flux_correction(self) -> None:
+        # for
+        pass
