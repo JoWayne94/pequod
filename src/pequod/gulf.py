@@ -201,7 +201,6 @@ class Gulf(Grid):
         else:
             if internal_x is not None:
                 flux_funcs.append(*internal_x)
-            flux_funcs.append(self.numerical_flux_x)
 
             for i in (0, 2):
                 bi = -(i != 0)
@@ -221,11 +220,26 @@ class Gulf(Grid):
                     if neumann is not None:
                         flux_funcs.append(*neumann[i])
 
-                    def neumann_x(tmp_bi=bi):
-                        if tmp_bi != 0:
+                    if i == 0:
+
+                        def neumann_x():
+                            mask = self.m_adv_vel[0][..., 0] > 0.0
+                            self.m_adv_x[0, ..., 0][mask] = self.m_adv_x[1, ..., 1][
+                                mask
+                            ]
+
+                    else:
+
+                        def neumann_x():
                             self.m_adv_x[0, ..., -1] = self.m_adv_x[1, ..., -1].copy()
+                            mask = self.m_adv_vel[0][..., -1] < 0.0
+                            self.m_adv_x[0, ..., -1][mask] = self.m_adv_x[0, ..., -2][
+                                mask
+                            ]
 
                     flux_funcs.append(neumann_x)
+
+            flux_funcs.append(self.numerical_flux_x)
 
         if self.m_boundary_conditions[1] == self.m_boundary_conditions[3] == "Periodic":
             if periodic_y is not None:
@@ -235,7 +249,6 @@ class Gulf(Grid):
         else:
             if internal_y is not None:
                 flux_funcs.append(*internal_y)
-            flux_funcs.append(self.numerical_flux_y)
 
             for i in (1, 3):
                 bi = (i == 1) - 1
@@ -255,13 +268,28 @@ class Gulf(Grid):
                     if neumann is not None:
                         flux_funcs.append(*neumann[i])
 
-                    def neumann_y(tmp_bi=bi):
-                        if tmp_bi != 0:
+                    if i == 1:
+
+                        def neumann_y():
+                            mask = self.m_adv_vel[1][..., 0, :] > 0.0
+                            self.m_adv_y[0, ..., 0, :][mask] = self.m_adv_y[
+                                1, ..., 1, :
+                            ][mask]
+
+                    else:
+
+                        def neumann_y():
                             self.m_adv_y[0, ..., -1, :] = self.m_adv_y[
                                 1, ..., -1, :
                             ].copy()
+                            mask = self.m_adv_vel[1][..., -1, :] < 0.0
+                            self.m_adv_y[0, ..., -1, :][mask] = self.m_adv_y[
+                                0, ..., -2, :
+                            ][mask]
 
                     flux_funcs.append(neumann_y)
+
+            flux_funcs.append(self.numerical_flux_y)
 
         self.numerical_fluxes = lambda: [update_flux() for update_flux in flux_funcs]
 

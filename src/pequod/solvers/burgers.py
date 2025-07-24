@@ -83,7 +83,7 @@ class Burgers(ScalarTransport):
         self.m_max_wave_speed = np.max(np.abs(self.m_cons[0]))
 
     def get_pre_processes(self):
-        tmp_func = lambda: [
+        tmp_func = lambda: [  # noqa: E731
             self.enforce_boundary_conditions(
                 periodic_x=[self.periodic_adv_vel_x],
                 periodic_y=[self.periodic_adv_vel_y],

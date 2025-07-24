@@ -362,17 +362,17 @@ class Solver(ABC, Gulf):
         pt = 0.01
 
         if visual == 1:
-            visual_func = lambda x: [
+            visual_func = lambda x: [  # noqa: E731
                 self.terminal_verbose(x),
                 self.visualise_sol_1d(title_str, pause_time=pt),
             ]
         elif visual == 2:
-            visual_func = lambda x: [
+            visual_func = lambda x: [  # noqa: E731
                 self.terminal_verbose(x),
                 self.visualise_sol(title_str, pause_time=pt),
             ]
         else:
-            visual_func = lambda x: [self.terminal_verbose(x)]
+            visual_func = lambda x: [self.terminal_verbose(x)]  # noqa: E731
 
         if save_freq:
             os.makedirs(self.data_dir, exist_ok=True)
