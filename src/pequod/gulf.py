@@ -24,7 +24,6 @@ class Gulf(Grid):
         super().__init__(nx, ny, west, south, east, north, index)
         self.m_nvars = 1
         self.m_dt = 1.0
-        self.m_cfl = 0.5
 
         self.X, self.Y = np.meshgrid(self.get_x_coords, self.get_y_coords)
         self.X_adv_x, self.Y_adv_x = np.meshgrid(
@@ -84,21 +83,6 @@ class Gulf(Grid):
         Setter for the time-step size.
         """
         self.m_dt = value
-
-    @property
-    def cfl(self):
-        """
-        Getter for the Courant-Friedrichs-Lewy number.
-        :return: CFL number.
-        """
-        return self.m_cfl
-
-    @cfl.setter
-    def cfl(self, value: float):
-        """
-        Setter for the CFL number.
-        """
-        self.m_cfl = value
 
     @property
     def solutions(self):

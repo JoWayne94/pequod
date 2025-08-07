@@ -84,7 +84,7 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Run tests
-        run: uv run pytest tests --cov=pypq --cov-report=term-missing
+        run: uv run pytest tests --cov=pequod --cov-report=term-missing
 
       - name: Cache uv dependencies
         uses: actions/cache@v4

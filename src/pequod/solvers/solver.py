@@ -32,13 +32,13 @@ class Solver(ABC, Gulf):
     Solver base class for various physics extensions.
     """
 
-    def __init__(self, nx, ny, bottom, top, left, right, index) -> None:
+    def __init__(self, nx, ny, left, bottom, right, top, index) -> None:
         """
         Main constructor for the solver.
         :return: 2D physics-based solver equipped with the ``CABARET`` advector, given grid dimensions.
         """
 
-        super().__init__(nx, ny, bottom, top, left, right, index)
+        super().__init__(nx, ny, left, bottom, right, top, index)
         self.m_t = 0.0
         self.m_final_time = 1.0
         self.last_step = False
@@ -79,6 +79,15 @@ class Solver(ABC, Gulf):
     @staticmethod
     def l2_norm(value: tuple[float | np.ndarray, float | np.ndarray]):
         return np.sqrt(np.square(value[0]) + np.square(value[1]))
+
+    @classmethod
+    def reset(cls):
+        """
+        Resets the solver to the new settings.
+        """
+        return cls(
+            cls.nx_faces, cls.ny_faces, cls.west, cls.south, cls.east, cls.north, "std"
+        )
 
     """ Visualisations and user outputs. """
 
@@ -361,7 +370,9 @@ class Solver(ABC, Gulf):
         )
         pt = 0.01
 
-        if visual == 1:
+        if visual == -1:
+            visual_func = lambda x: []  # noqa: E731
+        elif visual == 1:
             visual_func = lambda x: [  # noqa: E731
                 self.terminal_verbose(x),
                 self.visualise_sol_1d(title_str, pause_time=pt),

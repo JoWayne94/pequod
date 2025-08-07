@@ -1,5 +1,5 @@
 """
-Two-dimensional scalar transport equation solver class.
+Scalar transport equation solver class in 2D.
 
 partial u / partial t + div(F) = 0
 """
@@ -12,18 +12,35 @@ class ScalarTransport(Solver):
     Linear advection solver on a 2D ``Grid``; discretised using the ``CABARET``.
     """
 
-    def __init__(self, nx, ny, bottom, top, left, right, index="std") -> None:
+    def __init__(self, nx, ny, left, bottom, right, top, index="std") -> None:
         """
         Main constructor for the ``ScalarTransport`` class.
         :return: 2D scalar transport solver object.
         """
 
-        super().__init__(nx, ny, bottom, top, left, right, index)
+        super().__init__(nx, ny, left, bottom, right, top, index)
+        self.m_cfl = 0.5
         self.m_max_wave_speed = 1.0
         self.dt_const = self.cfl * min(self.m_dx, self.m_dy)
 
         if self.m_adv_vel is None:
             self.adv_vel = (1.0, 0.0)
+
+    @property
+    def cfl(self):
+        """
+        Getter for the Courant-Friedrichs-Lewy number.
+        :return: CFL number.
+        """
+        return self.m_cfl
+
+    @cfl.setter
+    def cfl(self, value: float):
+        """
+        Setter for the CFL number.
+        """
+        self.m_cfl = value
+        self.dt_const = value * min(self.m_dx, self.m_dy)
 
     @property
     def adv_vel(self):
@@ -70,12 +87,14 @@ class ScalarTransport(Solver):
             np.expand_dims(np.asarray(vy, dtype=np.float64).T, 0),
         )
 
-    def update_dt(self) -> None:
+    def update_dt(self, other: Callable = lambda: None) -> None:
         """
         Compute the next time-step size, dt^{n + 1}.
         :return: None
         """
         self.dt = self.dt_const / self.m_max_wave_speed
+
+        other()
 
         if self.t + self.dt >= self.final_time:
             self.dt = self.final_time - self.t

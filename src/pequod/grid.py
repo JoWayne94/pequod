@@ -80,6 +80,72 @@ class Grid(object):
             NotImplementedError("Numbering system not implemented.")
 
     @property
+    def nx(self):
+        return self.m_nx
+
+    @nx.setter
+    def nx(self, value: int):
+        self.m_nx = value
+        self.m_nx_adv = value + 1
+
+    @property
+    def nx_faces(self):
+        return self.m_nx_adv
+
+    @property
+    def ny(self):
+        return self.m_ny
+
+    @ny.setter
+    def ny(self, value: int):
+        self.m_ny = value
+        self.m_ny_adv = value + 1
+
+    @property
+    def ny_faces(self):
+        return self.m_ny_adv
+
+    @property
+    def west(self):
+        return self.m_west
+
+    @west.setter
+    def west(self, value: float):
+        self.m_west = value
+
+    @property
+    def south(self):
+        return self.m_south
+
+    @south.setter
+    def south(self, value: float):
+        self.m_south = value
+
+    @property
+    def east(self):
+        return self.m_east
+
+    @east.setter
+    def east(self, value: float):
+        self.m_east = value
+
+    @property
+    def north(self):
+        return self.m_north
+
+    @north.setter
+    def north(self, value: float):
+        self.m_north = value
+
+    @property
+    def dx(self) -> float:
+        return self.m_dx
+
+    @property
+    def dy(self) -> float:
+        return self.m_dy
+
+    @property
     def get_x_coords(self) -> np.array:
         return self.m_x_coords
 

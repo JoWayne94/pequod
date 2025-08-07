@@ -1,5 +1,5 @@
 """
-Two-dimensional scalar inviscid Burgers' equation solver class
+Scalar inviscid Burgers' equation solver class in 2D.
 
 partial u / partial t + div(F) = 0; F = u^2 / 2
 """
@@ -12,13 +12,13 @@ class Burgers(ScalarTransport):
     Scalar inviscid Burgers' equation solver, inherited from ``ScalarTransport``.
     """
 
-    def __init__(self, nx, ny, bottom, top, left, right, index="std") -> None:
+    def __init__(self, nx, ny, left, bottom, right, top, index="std") -> None:
         """
         Main constructor for the ``Burgers'`` class.
         :return: 2D scalar nonlinear transport solver object.
         """
 
-        super().__init__(nx, ny, bottom, top, left, right, index)
+        super().__init__(nx, ny, left, bottom, right, top, index)
 
     def physical_flux(self):
         """
