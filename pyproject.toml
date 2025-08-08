@@ -24,4 +24,5 @@ dev = [
     "pytest>=8.4.1",
     "pytest-cases>=3.9.1",
     "matplotlib>=3.10.5",
+    "pytest-cov>=6.2.1",
 ]
