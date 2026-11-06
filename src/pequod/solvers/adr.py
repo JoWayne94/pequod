@@ -1,11 +1,13 @@
 """
 Advection-diffusion-reaction (ADR) equation solver class in 2D.
 
-partial u / partial t + c * div(u) = lambda u + kappa Laplacian(u)
+partial u / partial t + c * div u = lambda * u + nu * nabla^2 u
+
+Todo: 1) Check if Laplacian source terms are required in the maximum principles.
 """
 
-# from typing import Sequence, Any
-from .transport import ScalarTransport, np
+from functools import partial
+from .transport import Grid, ScalarTransport, np
 
 
 class ADR(ScalarTransport):
@@ -13,73 +15,67 @@ class ADR(ScalarTransport):
     Linear ADR solver on a 2D ``Grid``; discretised using the ``CABARET``.
     """
 
-    def __init__(self, nx, ny, left, bottom, right, top, index="std") -> None:
+    def __init__(self, domain: Grid) -> None:
         """
         Main constructor for the ``ADR`` class.
         :return: 2D scalar ADR solver object.
         """
 
-        super().__init__(nx, ny, left, bottom, right, top, index)
-        self.m_kappa = 1.0
-        # Laplacian stencil with 2 extra ghost cells in each direction, 1 on each side
-        self.u = np.empty((self.m_ny + 2, self.m_nx + 2), dtype=np.float64)
-        self.laplacian_u = None
-        self.laplacian_bcs = None
+        super().__init__(domain)
+        self._nu = 1.0
+        self.dt_d = self.get_diffusion_timestep
+
+        # Laplacian stencil with 2 extra ghost points in each direction, 1 on each side
+        self.u = np.empty((self.domain.ny + 2, self.domain.nx + 2), dtype=np.float64)
 
     @property
-    def kappa(self):
-        return self.m_kappa
+    def get_diffusion_timestep(self):
+        if self.nu == 0.0:
+            return np.inf
+        return (
+            min(self.cfl, 0.5)
+            * min(self.domain.dx, self.domain.dy) ** 2
+            / (2.0 * self.nu)
+        )
 
-    @kappa.setter
-    def kappa(self, value: float):
-        self.m_kappa = value
+    @property
+    def nu(self):
+        """
+        :return: Viscosity.
+        """
+        return self._nu
 
-    def second_order_deriv(self):
+    @nu.setter
+    def nu(self, value: float):
+        if not np.isfinite(value) or value < 0.0:
+            raise ValueError("nu must be finite and non-negative.")
+        self._nu = value
+        self.dt_d = self.get_diffusion_timestep
+
+    def _second_order_deriv(self) -> None:
         # d2udy2
         self.laplacian_u = (
             self.u[2:, 1:-1] - 2.0 * self.u[1:-1, 1:-1] + self.u[:-2, 1:-1]
-        ) / self.m_dy**2.0
+        ) / self.domain.dy**2.0
 
         # d2udx2
         self.laplacian_u += (
             self.u[1:-1, 2:] - 2.0 * self.u[1:-1, 1:-1] + self.u[1:-1, :-2]
-        ) / self.m_dx**2.0
+        ) / self.domain.dx**2.0
+
+        self.laplacian_u *= self.dt * self.nu
 
     """ Boundary conditions. """
 
-    def periodic_x(self):
+    def periodic_x(self) -> None:
         self.u[:, 0] = self.u[:, -2]
         self.u[:, -1] = self.u[:, 1]
 
-    def periodic_y(self):
+    def periodic_y(self) -> None:
         self.u[0, :] = self.u[-2, :]
         self.u[-1, :] = self.u[1, :]
 
-    # def dirichlet_west(self):
-    #     self.u[:, 0] = 2. * self.m_boundary_values[0] - self.u[:, 1]
-    #
-    # def dirichlet_south(self):
-    #     self.u[0, :] = 2. * self.m_boundary_values[1] - self.u[1, :]
-    #
-    # def dirichlet_east(self):
-    #     self.u[:, -1] = 2. * self.m_boundary_values[2] - self.u[:, -2]
-    #
-    # def dirichlet_north(self):
-    #     self.u[-1, :] = 2. * self.m_boundary_values[3] - self.u[-2, :]
-    #
-    # def neumann_west(self):
-    #     self.u[:, 0] = self.u[:, 1] - self.m_dy * self.m_boundary_values[0]
-    #
-    # def neumann_south(self):
-    #     self.u[0, :] = self.u[1, :] - self.m_dx * self.m_boundary_values[1]
-    #
-    # def neumann_east(self):
-    #     self.u[:, -1] = self.u[:, -2] + self.m_dy * self.m_boundary_values[2]
-    #
-    # def neumann_north(self):
-    #     self.u[-1, :] = self.u[-2, :] + self.m_dx * self.m_boundary_values[3]
-
-    def laplacian_boundary_conditions(self) -> None:
+    def _laplacian_boundary_conditions(self) -> None:
         """
         Enforce Laplacian boundary conditions in the following order: West -> East -> South -> North.
         :return: None
@@ -87,98 +83,128 @@ class ADR(ScalarTransport):
 
         lbc_funcs = []
 
-        if self.m_boundary_conditions[0] == self.m_boundary_conditions[2] == "Periodic":
-            lbc_funcs.append(self.periodic_x)
+        # if self.domain.boundary_conditions.keys()[0] == "Periodic":
+        lbc_funcs.append(self.periodic_x)
+        lbc_funcs.append(self.periodic_y)
 
-        else:
-            for idx, i in enumerate([0, 2]):  # 0, 1; 0, 2
-                bi = (1, -2)[idx]
+        for bc, bv in self.domain.boundary_conditions.items():
+            if bc == "Channel" or bc == "Basin":
 
-                if self.m_boundary_conditions[i] == "Dirichlet":
+                lbc_funcs.pop()
 
-                    def dirichlet_x(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
-                        self.u[:, tmp_idx] = (
-                            2.0 * self.m_boundary_values[tmp_i] - self.u[:, tmp_bi]
-                        )
+                for idx, i in enumerate([1, 3]):  # 0, 1; 1, 3
+                    bi = (2, -2)[idx]
 
-                    lbc_funcs.append(dirichlet_x)
+                    if len(bv[i]) == 3:
 
-                else:
+                        if i == 1:
+                            # South
+                            def slip_y(tmp_idx=-idx, tmp_bi=bi):
+                                # idx = 0, bi = 2
+                                self.u[tmp_idx, 1:-1] = (
+                                        2.0 * self.u[1, 1:-1] - self.u[tmp_bi, 1:-1]
+                                )
+                            lbc_funcs.append(slip_y)
 
-                    def neumann_x(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
-                        self.u[:, tmp_idx] = (
-                            self.u[:, tmp_bi]
-                            + (tmp_idx - tmp_bi)
-                            * self.m_dy
-                            * self.m_boundary_values[tmp_i]
-                        )
+                        elif i == 3:
+                            # North
+                            def slip_y(tmp_idx=-idx, tmp_bi=bi):
+                                # idx = 1, bi = -2
+                                self.u[tmp_idx, 1:-1] = (
+                                        2.0 * self._adv_y[0, ..., tmp_idx, :] - self.u[tmp_bi, 1:-1]
+                                )
+                            lbc_funcs.append(slip_y)
 
-                    lbc_funcs.append(neumann_x)
+                    else: # len == 1
 
-        if self.m_boundary_conditions[1] == self.m_boundary_conditions[3] == "Periodic":
-            lbc_funcs.append(self.periodic_y)
+                        def dirichlet_y(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
+                            self.u[tmp_idx, :] = 2.0 * bv[tmp_i] - self.u[tmp_bi, :]
+                        lbc_funcs.append(dirichlet_y)
 
-        else:
-            for idx, i in enumerate([1, 3]):  # 0, 1; 1, 3
-                bi = (1, -2)[idx]
+            if bc == "Basin":
 
-                if self.m_boundary_conditions[i] == "Dirichlet":
+                lbc_funcs.pop(0)
 
-                    def dirichlet_y(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
-                        self.u[tmp_idx, :] = (
-                            2.0 * self.m_boundary_values[tmp_i] - self.u[tmp_bi, :]
-                        )
+                for idx, i in enumerate([0, 2]):  # 0, 1; 0, 2
+                    bi = (2, -2)[idx]
 
-                    lbc_funcs.append(dirichlet_y)
+                    if len(bv[i]) == 3:
 
-                else:
+                        if i == 0:
+                            # West
+                            def slip_x(tmp_idx=-idx, tmp_bi=bi):
+                                self.u[1:-1, tmp_idx] = (
+                                        2.0 * self.u[1:-1, 1] - self.u[1:-1, tmp_bi]
+                                )
+                            lbc_funcs.append(slip_x)
 
-                    def neumann_y(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
-                        self.u[tmp_idx, :] = (
-                            self.u[tmp_bi, :]
-                            + (tmp_idx - tmp_bi)
-                            * self.m_dx
-                            * self.m_boundary_values[tmp_i]
-                        )
+                        elif i == 2:
+                            # East
+                            def slip_x(tmp_idx=-idx, tmp_bi=bi):
+                                self.u[1:-1, tmp_idx] = (
+                                        2.0 * self._adv_x[0, ..., tmp_idx] - self.u[1:-1, tmp_bi]
+                                )
+                            lbc_funcs.append(slip_x)
 
-                    lbc_funcs.append(neumann_y)
+                    else: # len == 1
 
+                        def dirichlet_x(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
+                            self.u[:, tmp_idx] = 2.0 * bv[tmp_i] - self.u[:, tmp_bi]
+                        lbc_funcs.append(dirichlet_x)
+                # elif self.domain.boundary_conditions[boundaries[i]][0] in ("Neumann", "Inflow", "Outflow"):
+                # def neumann_x(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
+                #     self.u[:, tmp_idx] = (
+                #         self.u[:, tmp_bi]
+                #         + (tmp_idx - tmp_bi)
+                #         * self.domain.dy
+                #         * self.domain.boundary_conditions[boundaries[tmp_i]][1]
+                #     )
+                # lbc_funcs.append(neumann_x)
+            # else:
+            #     if list(self.domain.boundary_conditions)[0] != "Periodic":
+            #         raise ValueError(" BCs not recognised in ADR object. ")
+                # def neumann_y(tmp_idx=-idx, tmp_i=i, tmp_bi=bi):
+                #     self.u[tmp_idx, :] = (
+                #         self.u[tmp_bi, :]
+                #         + (tmp_idx - tmp_bi)
+                #         * self.domain.dx
+                #         * self.domain.boundary_conditions[boundaries[tmp_i]][1]
+                #     )
+                # lbc_funcs.append(neumann_y)
         self.laplacian_bcs = lambda: [lbc() for lbc in lbc_funcs]
 
     """ End of boundary conditions. """
 
-    def update_maximum_principle(self):
+    def update_maximum_principle(self) -> None:
+        # Compute source Laplacian
         self.u[1:-1, 1:-1] = self.solutions[0]
-
         self.laplacian_bcs()
-        self.second_order_deriv()
+        self._second_order_deriv()
 
-        self._M_x += self.dt * self.kappa * self.laplacian_u
-        self._m_x += self.dt * self.kappa * self.laplacian_u
-        self._M_y += self.dt * self.kappa * self.laplacian_u
-        self._m_y += self.dt * self.kappa * self.laplacian_u
+        self._M_x += self.laplacian_u
+        self._m_x += self.laplacian_u
+        self._M_y += self.laplacian_u
+        self._m_y += self.laplacian_u
 
-    def diffusion_dt(self):
-        dt_d = (min(self.m_dx, self.m_dy) ** 2) / (4.0 * np.abs(self.kappa))
-        self.dt = min(self.dt, dt_d)
+    def diffusion_dt(self) -> None:
+        self.dt = min(self.dt, self.dt_d)
 
-    def update_dt_adr(self) -> None:
-        self.update_dt(other=self.diffusion_dt)
-
-    def corrector(self):
-        self.solutions[0] += self.dt * self.kappa * self.laplacian_u
+    def _corrector(self):
+        # Operator splitting
+        self.solutions[0] += self.laplacian_u
 
     def get_pre_processes(self):
         return [
-            self.update_dt_adr,
-            self.enforce_boundary_conditions,
-            self.laplacian_boundary_conditions,
+            partial(self.update_dt, diff=self.diffusion_dt),
+            self._boundary_conditions,
+            self._laplacian_boundary_conditions,
         ]
 
     def get_solve_sequence(self):
         return [
-            self.update_dt_adr,
+            partial(self.update_dt, diff=self.diffusion_dt),
             self.predictor,
+            self.numerical_fluxes,
             self.update_maximum_principle,
             self.second_order_extrapolation,
             self.numerical_fluxes,

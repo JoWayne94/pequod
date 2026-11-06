@@ -1,9 +1,22 @@
 # -------------- PEQUOD --------------
 # Features in development
 manual/
-tutorials/
+!tutorials/
+tutorials/**
+
+!tutorials/qg/
+tutorials/qg/**
+!tutorials/qg/*.py
+!tutorials/qg/*.md
+!tutorials/qg/*.tex
+
+!tutorials/qg2/
+tutorials/qg2/**
+!tutorials/qg2/*.py
+!tutorials/qg2/*.md
+!tutorials/qg2/*.tex
+
 src/pequod/CMM/
-src/pequod/HelmSolve/
 
 # Fortran source code
 src/f90pq/

@@ -1,0 +1,1031 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{hyperref}
+
+\newcommand{\dd}{\,\mathrm{d}}
+\newcommand{\lap}{\nabla^2}
+\newcommand{\Oh}{\mathcal{O}}
+\newcommand{\Om}{\Omega}
+
+\title{Quasi-Geostrophic Tutorial Test Cases}
+\author{Pequod QG solver}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Model and numerical conventions}
+
+\paragraph{Unit conventions.}
+The public \texttt{pequod.qg} and \texttt{pequod.qg2} interfaces now accept
+SI inputs and expose SI field snapshots. Their numerical engines remain
+dimensionless. The analytic benchmarks and legacy cases in
+\texttt{tutorials/qg/main.py}, \texttt{convergence.py}, and
+\texttt{tutorials/qg2/main.py} explicitly select
+\texttt{units="dimensionless"}, preserving all benchmark values below.
+The separate \texttt{wind\_experiment.py} runner uses SI inputs and a
+final time in years, as specified in its subsection below.
+
+The test cases implemented in \texttt{tutorials/qg/main.py} and
+\texttt{tutorials/qg/convergence.py} use the one-layer
+quasi-geostrophic (QG) potential-vorticity anomaly
+\begin{equation}
+  q = \lap\psi - \lambda^2\psi,
+  \qquad
+  \lambda^2 = L_D^{-2},
+  \label{eq:pv}
+\end{equation}
+with velocity and Jacobian conventions
+\begin{equation}
+  (u,v)=(-\psi_y,\psi_x),
+  \qquad
+  J(\psi,q)=\psi_xq_y-\psi_yq_x.
+  \label{eq:velocity-jacobian}
+\end{equation}
+The equation advanced by the solver can be written
+\begin{equation}
+  q_t + J(\psi,q) + \beta\psi_x
+  = \nu\lap q-r\zeta+S,
+  \qquad
+  \zeta=\lap\psi=q+\lambda^2\psi,
+  \label{eq:qg}
+\end{equation}
+where $S$ is the externally prescribed forcing, $\nu$ is the PV
+diffusivity, and $r$ is the linear relative-vorticity drag coefficient.
+The code represents the beta effect as the periodic term $\beta v=
+\beta\psi_x$ rather than including the non-periodic function $\beta y$
+inside $q$.
+
+All solid boundaries are impermeable and free slip.  Thus
+\begin{equation}
+  \boldsymbol{u}\mathbin{\cdot}\boldsymbol{n}=0
+  \quad\Longleftrightarrow\quad
+  \psi=C_k
+  \quad\text{on each connected solid boundary }\Gamma_k.
+  \label{eq:solid-bc}
+\end{equation}
+The manufactured cases below choose every wall or island constant to be
+zero.  The numerical PV flux normal to regular walls and obstacle faces is
+also set to zero.  These cases therefore test a prescribed $C_k=0$
+multiply-connected problem; they do not determine a general island
+constant from an island rule or circulation constraint.
+
+The exact manufactured cases initialize $q$ directly at conservative and
+CABARET face points and supply the corresponding analytic velocity.  The
+non-manufactured square-cylinder case instead initializes velocity and lets
+the solver reconstruct a dynamically consistent PV field.
+
+\section{Summary of cases in \texttt{main.py}}
+
+The default resolution is $N_x=N_y=128$.  It can be changed with the
+\texttt{--resolution} command-line option.
+
+\begin{table}[ht]
+  \centering
+  \small
+  \begin{tabular}{@{}llllll@{}}
+    \toprule
+    Case & Outer BC & Obstacle & $\beta$ & $\nu$ & $(\mathrm{CFL},T)$ \\
+    \midrule
+    Manufactured square hole & periodic $x,y$ & centered square
+      & $0$ & $0$ & $(0.2,2)$ \\
+    Periodic-beta square hole & periodic $x,y$ & centered square
+      & $1$ & $0$ & $(0.2,2)$ \\
+    Channel square island & periodic $x$, solid $y$ walls & centered square
+      & $1$ & $0$ & $(0.2,2)$ \\
+    Periodic square cylinder & periodic $x,y$ & centered square
+      & $0$ & $10^{-3}$ & $(0.2,40)$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{Parameters selected in \texttt{tutorials/qg/main.py}.  Every
+  case uses $L_D=1$.  The first three have $r=0$; the last has $r=0.01$.}
+  \label{tab:cases}
+\end{table}
+
+\section{Doubly periodic manufactured square hole}
+\label{sec:manufactured-hole}
+
+This is the \texttt{manufactured\_square\_hole} case.  The fluid domain is
+\begin{equation}
+  \Om = [-\pi,\pi)\times[-\pi,\pi)\setminus\Oh,
+  \qquad
+  \Oh=[-a,a]\times[-a,a],
+  \qquad a=\frac{\pi}{4}.
+\end{equation}
+The outer boundaries are periodic in both directions and
+\begin{equation}
+  \psi=0\qquad\text{on }\partial\Oh.
+\end{equation}
+Let
+\begin{equation}
+  A=1,
+  \qquad L_D=1,
+  \qquad c=\cos a,
+  \qquad X=\cos x,
+  \qquad Y=\cos y.
+\end{equation}
+The steady manufactured streamfunction is
+\begin{equation}
+  \psi_e=A(X-c)(Y-c).
+  \label{eq:periodic-psi}
+\end{equation}
+It is exactly $2\pi$-periodic and vanishes on all four obstacle faces.  Its
+PV and velocity are
+\begin{align}
+  q_e &=-A\left[
+      X(Y-c)+Y(X-c)+\lambda^2(X-c)(Y-c)
+    \right],
+    \label{eq:periodic-q}\\
+  u_e &= A(X-c)\sin y,
+  &
+  v_e &=-A\sin x\,(Y-c).
+  \label{eq:periodic-velocity}
+\end{align}
+For $L_D=1$, equation~\eqref{eq:periodic-q} reduces to
+\begin{equation}
+  q_e=-A\left(3XY-2cX-2cY+c^2\right).
+\end{equation}
+The initial conditions are
+\begin{equation}
+  q(x,y,0)=q_e(x,y),
+  \qquad
+  \boldsymbol{u}(x,y,0)=\boldsymbol{u}_e(x,y).
+\end{equation}
+With $\beta=0$, $\nu=0$, and $r=0$, the forcing that makes the solution
+steady is
+\begin{equation}
+  S_e=J(\psi_e,q_e)
+  =A^2c\sin x\sin y\left(\cos x-\cos y\right).
+  \label{eq:periodic-source}
+\end{equation}
+The order of the final cosine difference follows from the convention in
+equation~\eqref{eq:velocity-jacobian}; reversing it gives $-J$.
+
+The executable parameters are
+\begin{equation}
+  N_x=N_y=128,\quad
+  \mathrm{CFL}=0.2,\quad
+  T=2,\quad
+  \nu=0,\quad
+  \beta=0,\quad
+  r=0.
+\end{equation}
+
+\section{Doubly periodic beta-plane square hole}
+\label{sec:beta-hole}
+
+The \texttt{periodic\_beta\_square\_hole} case has the same domain,
+obstacle, boundary conditions, exact fields, and initial conditions as
+Section~\ref{sec:manufactured-hole}.  Its parameters are
+\begin{equation}
+  A=1,\quad a=\frac{\pi}{4},\quad L_D=1,\quad
+  \beta=1,\quad \nu=0,\quad r=0,\quad
+  \mathrm{CFL}=0.2,\quad T=2.
+\end{equation}
+Because the beta effect is kept outside the definition of $q$, the
+manufactured forcing is
+\begin{align}
+  S_{\beta,e}
+    &=J(\psi_e,q_e)+\beta\psi_{e,x},\\
+  \psi_{e,x}
+    &=-A\sin x\,(\cos y-c),\\
+  S_{\beta,e}
+    &=A^2c\sin x\sin y(\cos x-\cos y)
+      -\beta A\sin x(\cos y-c).
+  \label{eq:beta-source}
+\end{align}
+Substitution into equation~\eqref{eq:qg} gives $q_t=0$, so this is again
+an exact steady solution.
+
+\section{Periodic channel with a square island}
+\label{sec:channel-island}
+
+This is the \texttt{channel\_square\_island} case.  Its outer rectangle is
+\begin{equation}
+  0\le x<L_x,
+  \qquad
+  -\frac{L_y}{2}\le y\le\frac{L_y}{2},
+  \qquad
+  L_x=2\pi,\quad L_y=\pi.
+\end{equation}
+The $x$ direction is periodic.  The north and south boundaries are
+stationary impermeable free-slip walls.  The square island is centered at
+$(x_0,0)$ and is
+\begin{equation}
+  \Oh=[x_0-a_x,x_0+a_x]\times[-a_y,a_y],
+  \qquad
+  x_0=\pi,\quad a_x=a_y=\frac{\pi}{4}.
+\end{equation}
+The boundary constants chosen by the manufactured solution are
+\begin{equation}
+  \psi=C_S=0\quad (y=-L_y/2),
+  \qquad
+  \psi=C_N=0\quad (y=L_y/2),
+  \qquad
+  \psi=C_I=0\quad (\partial\Oh).
+  \label{eq:channel-bcs}
+\end{equation}
+
+Define
+\begin{equation}
+  k=\frac{2\pi}{L_x},
+  \qquad
+  \ell=\frac{2\pi}{L_y},
+  \qquad
+  \mu=\frac{\pi}{L_y},
+\end{equation}
+and the factors
+\begin{align}
+  f(x) &= \cos(k(x-x_0))-\cos(ka_x),\\
+  w(y) &= \sin^2\!\left(\mu(y+L_y/2)\right),\\
+  g(y) &= \cos(\ell y)-\cos(\ell a_y),\\
+  h(y) &= w(y)g(y).
+\end{align}
+The exact steady streamfunction is
+\begin{equation}
+  \psi_e(x,y)=A f(x)h(y),
+  \qquad A=1.
+  \label{eq:channel-psi}
+\end{equation}
+The wall envelope $w$ vanishes at $y=\pm L_y/2$.  The factor $f$ vanishes
+on the west and east island faces, while $g$ vanishes on the south and north
+island faces.  Equation~\eqref{eq:channel-bcs} therefore holds exactly.
+
+For compact expressions for the remaining fields, use
+\begin{align}
+  f'&=-k\sin(k(x-x_0)),
+  &f''&=-k^2\cos(k(x-x_0)),
+  &f'''&=k^3\sin(k(x-x_0)),\\
+  w'&=\mu\sin(2\mu(y+L_y/2)),
+  &w''&=2\mu^2\cos(2\mu(y+L_y/2)),
+  &w'''&=-4\mu^3\sin(2\mu(y+L_y/2)),\\
+  g'&=-\ell\sin(\ell y),
+  &g''&=-\ell^2\cos(\ell y),
+  &g'''&=\ell^3\sin(\ell y),
+\end{align}
+with
+\begin{align}
+  h' &= w'g+wg',\\
+  h''&=w''g+2w'g'+wg'',\\
+  h'''&=w'''g+3w''g'+3w'g''+wg'''.
+\end{align}
+The exact PV and velocity are
+\begin{align}
+  q_e &= A\left[f''h+f(h''-\lambda^2h)\right],
+    \label{eq:channel-q}\\
+  u_e &=-Af h',
+  &v_e&=Af'h.
+  \label{eq:channel-velocity}
+\end{align}
+For the exact forcing, define
+\begin{align}
+  q_{e,x}
+    &=A\left[f'''h+f'(h''-\lambda^2h)\right],\\
+  q_{e,y}
+    &=A\left[f''h'+f(h'''-\lambda^2h')\right].
+\end{align}
+Then
+\begin{equation}
+  S_e
+  =J(\psi_e,q_e)+\beta\psi_{e,x}
+  =(Af'h)q_{e,y}-(Af h')q_{e,x}+\beta Af'h.
+  \label{eq:channel-source}
+\end{equation}
+The initial conditions are $q(x,y,0)=q_e(x,y)$ and
+$\boldsymbol{u}(x,y,0)=\boldsymbol{u}_e(x,y)$.  The remaining parameters are
+\begin{equation}
+  L_D=1,\quad \beta=1,\quad \nu=0,\quad r=0,\quad
+  N_x=N_y=128,\quad \mathrm{CFL}=0.2,\quad T=2.
+\end{equation}
+
+This test exercises a multiply-connected Helmholtz inversion with a
+prescribed island constant.  Determining a nonzero or time-dependent $C_I$
+from circulation conservation is outside the scope of this manufactured
+case.
+
+\section{Doubly periodic square-cylinder vortex}
+\label{sec:periodic-cylinder}
+
+The \texttt{periodic\_square\_cylinder} case is a non-manufactured dynamic
+test on
+\begin{equation}
+  [0,2\pi)\times[0,2\pi)
+\end{equation}
+with doubly periodic outer boundaries and a centered square obstacle of
+width and height $\pi/2$.  Thus the obstacle is
+\begin{equation}
+  \Oh=[3\pi/4,5\pi/4]\times[3\pi/4,5\pi/4],
+  \qquad \psi=0\quad\text{on }\partial\Oh.
+\end{equation}
+Let $A=0.35$, $\xi=x$, and $\eta=y$ for this $2\pi$-square.  The velocity
+IVP is generated from
+\begin{equation}
+  \psi_{\mathrm{gen}}
+  =A\left[\sin\xi+0.35\cos(2\xi+0.3)\right]\sin\eta,
+\end{equation}
+which gives
+\begin{align}
+  u_0
+    &=-A\left[\sin\xi+0.35\cos(2\xi+0.3)\right]\cos\eta,\\
+  v_0
+    &=A\left[\cos\xi-0.70\sin(2\xi+0.3)\right]\sin\eta.
+  \label{eq:cylinder-velocity}
+\end{align}
+The generating streamfunction does not itself satisfy the obstacle
+condition.  During preprocessing, the solver takes the discrete curl of
+equation~\eqref{eq:cylinder-velocity}, projects through the masked elliptic
+solve so that $\psi=0$ in the square, and converts the resulting relative
+vorticity to a consistent QG PV field.  Consequently this case has an
+explicit velocity IVP but not a closed-form exact PV solution after the
+obstacle projection.
+
+There is no external forcing.  The parameters are
+\begin{align}
+  L_D&=1, & \beta&=0, & \nu&=10^{-3}, & r&=0.01,\\
+  N_x&=N_y=128, & \mathrm{CFL}&=0.2, & T&=40.
+\end{align}
+
+\section{Convergence study in \texttt{convergence.py}}
+\label{sec:convergence}
+
+The convergence driver uses the f-plane manufactured square-hole problem
+from Section~\ref{sec:manufactured-hole}, but its run parameters differ from
+the interactive case:
+\begin{equation}
+  N\in\{64,128,256,512\},\qquad
+  \mathrm{CFL}=0.15,\qquad
+  T=0.5,\qquad
+  \nu=\beta=r=0.
+\end{equation}
+The convergence controls are
+\begin{itemize}
+  \item \texttt{--resolutions} for the resolution list,
+  \item \texttt{--final-time} for the final time, and
+  \item \texttt{--cfl} for the CFL number.
+\end{itemize}
+
+Let $\Om_h$ be the active fluid-point mask.  On a uniform mesh the area
+factor cancels from the relative discrete $L_2$ norm, so the reported error
+is
+\begin{equation}
+  E_f^{(2)}
+  =\left[
+    \frac{\sum_{(i,j)\in\Om_h}(f_{h,ij}-f_{e,ij})^2}
+         {\sum_{(i,j)\in\Om_h}f_{e,ij}^2}
+  \right]^{1/2}.
+  \label{eq:l2-error}
+\end{equation}
+The absolute maximum error is
+\begin{equation}
+  E_f^{(\infty)}
+  =\max_{(i,j)\in\Om_h}|f_{h,ij}-f_{e,ij}|.
+  \label{eq:linf-error}
+\end{equation}
+For successive resolutions $N_1$ and $N_2$, the observed order is
+\begin{equation}
+  p
+  =\frac{\log(E_{N_1}/E_{N_2})}{\log(N_2/N_1)}.
+  \label{eq:observed-order}
+\end{equation}
+
+The driver reports four relative-$L_2$ diagnostics:
+\begin{enumerate}
+  \item \textbf{PV inversion:} initialize with $q_e$, solve
+    $(\lap-\lambda^2)\psi_h=q_e$, and report
+    $E_{\psi,\mathrm{inv}}^{(2)}$ before time integration.
+  \item \textbf{PV operator consistency:} set the analytic $\psi_e$ to zero
+    on the solid mask, apply the periodic five-point discrete Helmholtz
+    operator, and compare the resulting $q_h$ with $q_e$ to obtain
+    $E_{q,\mathrm{op}}^{(2)}$.
+  \item \textbf{Full streamfunction evolution:} integrate to $T=0.5$ with
+    the exact source and report $E_{\psi,T}^{(2)}$.
+  \item \textbf{Full PV evolution:} report $E_{q,T}^{(2)}$ at the same final
+    time.
+\end{enumerate}
+It also records $E_{\psi,T}^{(\infty)}$, $E_{q,T}^{(\infty)}$, the maximum
+absolute obstacle-normal numerical PV flux, and
+\begin{equation}
+  I_S=\sum_{(i,j)\in\Om_h}S_{e,ij}\,\Delta x\,\Delta y,
+\end{equation}
+which should vanish to roundoff by symmetry.  Results are printed as a
+table and written to \texttt{qg\_manufactured\_convergence.csv} unless an
+alternative path is supplied with \texttt{--output}.
+
+\section{Commands}
+
+From the repository root, the cases can be run with
+\begin{verbatim}
+PYTHONPATH=src .venv/bin/python tutorials/qg/main.py manufactured_square_hole
+PYTHONPATH=src .venv/bin/python tutorials/qg/main.py periodic_beta_square_hole
+PYTHONPATH=src .venv/bin/python tutorials/qg/main.py channel_square_island
+PYTHONPATH=src .venv/bin/python tutorials/qg/main.py periodic_square_cylinder
+PYTHONPATH=src .venv/bin/python tutorials/qg/convergence.py
+\end{verbatim}
+
+The $512^2$ masked sparse factorization in the default convergence sequence
+can require substantial memory.  A shorter smoke test is, for example,
+\begin{verbatim}
+PYTHONPATH=src .venv/bin/python tutorials/qg/convergence.py \
+  --resolutions 32 64 --final-time 0.1
+\end{verbatim}
+
+\section{Closed basin and northwest-corner bump}
+
+Three additional cases use the closed unit basin $[0,1]^2$ with
+$\psi=0$ on all four regular walls.  In the bump cases the solid is
+\[
+  \Oh=[0,1/4]\times[3/4,1].
+\]
+It meets both the west and north boundaries; its exposed east and south
+faces also have $\psi=0$.  There is no independent island boundary constant
+because this solid is connected to the outer wall.  The omitted north
+endpoint is included in the solid mask when plotting.
+
+The cases \texttt{basin\_manufactured} and
+\texttt{basin\_northwest\_manufactured} use
+\[
+ P(s)=s^3(1-s)^3,\qquad
+ \psi_e=A f(x)g(y),\qquad A=0.01.
+\]
+For the empty basin, $f$ and $g$ are both $P$ normalized by
+$\max_{0\le s\le1}|P(s)|$.  For the bump, normalize each of
+$P(x)(x-1/4)^3$ and $P(y)(y-3/4)^3$ separately by its maximum
+absolute value on $[0,1]$ to obtain $f$ and $g$.
+The role of these factors is explained below.
+With $L_D=1$, the exact fields are
+\begin{align}
+ q_e&=A(f''g+fg''-fg),&
+ u_e&=-Afg',&v_e&=Af'g,\\
+ S_e&=u_e q_{e,x}+v_e q_{e,y}+\beta v_e.
+\end{align}
+Initialize $q=q_e$ and $(u,v)=(u_e,v_e)$.  The validation cases use
+$\beta=1$, $\nu=r=0$, $\mathrm{CFL}=0.15$, and $T=0.1$.
+The grid is $128\times128$ by default.  Automated tests compare
+$32^2$ and $64^2$ for inversion and full evolution.
+
+\subsection{Why choose a cubic boundary factor?}
+
+The polynomial $P$ is a design choice for the manufactured solution,
+not a requirement of the QG equations.  Impermeability requires only
+constant streamfunction along a solid boundary.  For the chosen constant
+zero, this means $\psi_e=0$; it does not by itself require zero tangential
+velocity or zero PV.
+
+The cubic factors impose additional conditions deliberately:
+\[
+ P(0)=P(1)=0,\qquad
+ P'(0)=P'(1)=0,\qquad
+ P''(0)=P''(1)=0.
+\]
+To see why the first two derivatives matter, consider a vertical wall at
+$x=x_b$.  The separable streamfunction gives
+\begin{align}
+ \psi_e(x_b,y)&=A f(x_b)g(y),\\
+ u_e(x_b,y)&=-A f(x_b)g'(y),\\
+ v_e(x_b,y)&=A f'(x_b)g(y),\\
+ q_e(x_b,y)&=A\left[f''(x_b)g(y)+f(x_b)g''(y)
+                         -L_D^{-2}f(x_b)g(y)\right].
+\end{align}
+Here $u_e$ is the normal velocity and $v_e$ is the tangential velocity.
+Therefore the conditions have distinct roles:
+\begin{enumerate}
+ \item $f(x_b)=0$ makes $\psi_e=0$ and the normal velocity $u_e=0$.
+ \item $f'(x_b)=0$ additionally makes the tangential velocity $v_e=0$.
+ \item $f''(x_b)=0$, together with $f(x_b)=0$, additionally makes $q_e=0$.
+\end{enumerate}
+At a horizontal wall the same argument applies to $g$, with the roles of
+the velocity components exchanged.  Cubic zeros are a simple way to make
+all three conditions hold simultaneously.
+
+For comparison, a simple zero of $f$ generally leaves $f'$ nonzero, so it
+allows tangential flow.  A double zero makes $f=f'=0$ but generally leaves
+$f''$ nonzero, so boundary PV can remain nonzero.  A triple zero makes
+$f=f'=f''=0$.  This is why the construction uses exponent three.
+
+\subsection{How the factors enforce the northwest bump conditions}
+
+Before normalization, the bump factors are
+\[
+ \widetilde f(x)=x^3(1-x)^3(x-1/4)^3,\qquad
+ \widetilde g(y)=y^3(1-y)^3(y-3/4)^3.
+\]
+The endpoint factors enforce the conditions on the regular basin walls.
+The additional zero at $x=1/4$ enforces them on the exposed east face of
+the bump; the zero at $y=3/4$ enforces them on its exposed south face.
+The factors also vanish along the extensions of those lines into the
+fluid.  These are features of the selected exact solution, not additional
+solid boundaries in the numerical geometry.
+
+Normalization sets
+\[
+ f=\frac{\widetilde f}{\max_{s\in[0,1]}|\widetilde f(s)|},
+ \qquad
+ g=\frac{\widetilde g}{\max_{s\in[0,1]}|\widetilde g(s)|}.
+\]
+It changes the magnitude but preserves every zero and its multiplicity.
+For the empty basin the same definition applies with
+$\widetilde f=\widetilde g=P$.
+
+\subsection{Implementation and validation limits}
+
+In \texttt{tutorials/qg/main.py}, the function
+\texttt{\_basin\_polynomials(bump)} constructs $P$ with
+\begin{verbatim}
+p = Polynomial([0., 1.])**3 * Polynomial([1., -1.])**3
+\end{verbatim}
+NumPy's \texttt{Polynomial} stores coefficients in increasing powers:
+\texttt{Polynomial([0., 1.])} represents $s$, and
+\texttt{Polynomial([1., -1.])} represents $1-s$.
+For the bump, the function multiplies by
+\begin{verbatim}
+p *= Polynomial([-root, 1.])**3
+\end{verbatim}
+using \texttt{root=0.25} for $f$ and \texttt{root=0.75} for $g$.
+It then normalizes the factors.
+The function \texttt{basin\_manufactured\_fields} evaluates their
+derivatives to construct $\psi_e$, $q_e$, the velocity, and the analytic
+source.  The factory \texttt{make\_basin\_case} selects these fields as
+initial data.
+
+This construction is compatible with the current solver's practice of
+zeroing stored PV on the south and west regular boundary rows and on
+the solid obstacle mask.  The manufactured fields also have zero PV on
+the north and east boundaries.  Consequently, these tests check inversion,
+forcing, time evolution, and the corner geometry for a particularly
+compatible exact solution.  They do not establish accuracy for general
+wall data with nonzero PV or nonzero tangential velocity.
+
+Although the manufactured velocity happens to vanish on every solid face,
+this does not turn the solver into a general no-slip QG formulation:
+zero tangential velocity is a property of this selected solution.
+It is not an extra condition imposed on arbitrary solutions by the QG
+Helmholtz inversion.  Further benchmarks with nonzero tangential wall flow
+and nonzero boundary PV are needed to test those more general situations.
+
+The case \texttt{basin\_northwest\_bump} uses the same initial fields and
+geometry as the manufactured bump case, but sets $S=0$, $r=0.01$,
+and $T=2$.  It is an evolving, unforced example with no claimed steady
+exact solution; $\beta=1$, $\nu=0$, and $\mathrm{CFL}=0.15$.
+
+Run these cases from the repository root:
+\begin{verbatim}
+PYTHONPATH=src .venv/bin/python tutorials/qg/main.py basin_manufactured
+PYTHONPATH=src .venv/bin/python tutorials/qg/main.py \
+  basin_northwest_manufactured
+PYTHONPATH=src .venv/bin/python tutorials/qg/main.py basin_northwest_bump
+\end{verbatim}
+The existing \texttt{convergence.py} driver still targets the periodic
+f-plane square-hole case.
+
+\section{Two-layer QG: \texttt{qg2.py} and \texttt{tutorials/qg2/main.py}}
+
+The class \texttt{TwoLayerQG}, exported as \texttt{pequod.qg2}, implements
+a rigid-lid two-layer model. Layer 1 is the upper layer and layer 2 is the
+lower layer. Its PV relations replace the single-layer relation:
+\begin{align}
+ q_1&=\lap\psi_1+F_1(\psi_2-\psi_1),\\
+ q_2&=\lap\psi_2+F_2(\psi_1-\psi_2),\\
+ \partial_t q_i+J(\psi_i,q_i)+\beta\partial_x\psi_i
+   &=\nu_i\lap q_i-r_i\lap\psi_i+S_i,\qquad i=1,2.
+\end{align}
+The velocity convention is $(u_i,v_i)=(-\psi_{i,y},\psi_{i,x})$.
+The positive stretching coefficients are conventionally
+$F_i=f_0^2/(g'H_i)$, where $H_i$ is the reference layer depth and $g'$
+is reduced gravity.  There is no additional single-layer
+$-L_D^{-2}\psi_i$ term. The baroclinic deformation radius is
+$(F_1+F_2)^{-1/2}$.
+
+\subsection{Coupled inversion, boundaries and time stepping}
+
+The inversion uses the weighted barotropic mode and the layer difference:
+\begin{align}
+ \psi_B&=\frac{F_2\psi_1+F_1\psi_2}{F_1+F_2},&
+ q_B&=\frac{F_2q_1+F_1q_2}{F_1+F_2},&
+ \lap\psi_B&=q_B,\\
+ \psi_C&=\psi_1-\psi_2,&q_C&=q_1-q_2,&
+ [\lap-(F_1+F_2)]\psi_C&=q_C.
+\end{align}
+Reconstruction gives
+\[
+ \psi_1=\psi_B+\frac{F_1}{F_1+F_2}\psi_C,\qquad
+ \psi_2=\psi_B-\frac{F_2}{F_1+F_2}\psi_C.
+\]
+Both inverses use the five-point discrete Laplacian.  A completely
+periodic domain without an obstacle requires zero mean $q_B$; the code
+checks this compatibility condition and chooses zero mean $\psi_B$.
+The constant baroclinic mode is retained.
+
+Both layers share the same boundary geometry.  Periodic, channel and basin
+boundaries, centered obstacles, and the existing basin corner bumps are
+supported. By default each wall/obstacle has prescribed $\psi_i=0$, and the inherited
+QG masks close the normal PV flux. Island constants are not inferred from
+circulation. The limitations of the single-layer wall-PV masking described
+above also apply to each layer.
+
+The solver advances both CABARET transport engines with one common
+timestep, restricted by both layers' advection and diffusion limits and
+an explicit beta/drag cap. Both PV predictors are completed before a joint
+inversion, and both correctors are completed before the next joint
+inversion. Thus the velocities use a common temporal stage.
+Drag is applied to relative vorticity $\lap\psi_i$, not directly to $q_i$.
+
+\subsection{Manufactured two-layer cases}
+
+Four steady benchmarks are selectable:
+\begin{enumerate}
+ \item \texttt{periodic\_square\_hole}: the periodic square-hole geometry and
+   base streamfunction of Section~\ref{sec:manufactured-hole}.
+ \item \texttt{channel\_square\_island\_manufactured}: the channel/island geometry and
+   base streamfunction of Section~\ref{sec:channel-island}.
+ \item \texttt{basin\_manufactured}: the empty unit basin with the
+   normalized cubic factors described above.
+ \item \texttt{basin\_northwest\_manufactured}: the unit basin with
+   $\Oh=[0,1/4]\times[3/4,1]$ and the corresponding cubic bump factors.
+\end{enumerate}
+Let $\phi$ denote the selected base streamfunction and $z=\lap\phi$.
+Its amplitude is 1 for the periodic and channel cases and 0.01 for the
+basin cases.  Define $a_1=1$, $a_2=1/2$.  The exact steady layer fields are
+\begin{align}
+ \psi_{i,e}&=a_i\phi,&
+ q_{i,e}&=a_i z+F_i(a_j-a_i)\phi,\qquad j=3-i,\\
+ u_{i,e}&=-a_i\phi_y,&v_{i,e}&=a_i\phi_x,\\
+ S_{i,e}&=a_i^2J(\phi,z)+\beta a_i\phi_x.
+\end{align}
+The stretching contribution cancels from the Jacobian because
+$J(\phi,\phi)=0$. Both barotropic and baroclinic components are present,
+although these proportional manufactured layer streamfunctions do not
+test arbitrary nonlinear interactions between independent layer patterns.
+Independent layer patterns and unequal coefficients are additionally
+checked in the discrete inversion regression tests.
+
+The initial PV and velocity are the exact fields above. All four cases use
+\[
+ F_1=1,\quad F_2=2,\quad \beta=1,\quad
+ \nu_1=\nu_2=r_1=r_2=0,\quad
+ \mathrm{CFL}=0.15,\quad T=0.1.
+\]
+The default grid is $64\times64$. Each case reports relative $L_2$ and
+absolute $L_\infty$ errors for both $\psi_i$ and $q_i$ over active fluid
+points. The option \texttt{--convergence} runs $N=32,64,128$ and reports
+the measured orders for every error norm. These are full-evolution
+errors; their observed rates need not equal the formal elliptic order.
+
+\subsection{Two-layer square-island channel wake}
+
+The name \texttt{channel\_square\_island} now selects a dynamic wake,
+adapted from \texttt{square\_cylinder\_wake} in the Navier--Stokes tutorial.
+The former exact channel benchmark has been renamed
+\texttt{channel\_square\_island\_manufactured}.
+The box is $[0,16)\times[0,8]$, periodic in $x$, with the solid
+$[7.5,8.5]\times[3.5,4.5]$. The default CLI mesh is $256\times128$;
+\texttt{--resolution N} means $N_y=N$, $N_x=2N$ for this case.
+Both layers have stationary no-slip channel and island walls, enabled
+explicitly with \texttt{no\_slip=True}; other benchmarks retain their
+original impermeable QG boundary treatment.
+
+The fixed bulk velocities are $(U_1,U_2)=(1,0.8)$, imposed by
+\[
+ \psi_{i,S}=0,\qquad \psi_{i,N}=-8U_i,\qquad \psi_{i,I}=-4U_i.
+\]
+Thus the cross-channel transport is $8U_i$ per layer even as the wake evolves.
+These are prescribed island constants, not a circulation-constrained island rule.
+Nonhomogeneous boundary lifts are included in both modal elliptic inversions;
+adding a uniform velocity after inversion would violate island impermeability.
+The no-slip wall PV is obtained from a one-sided Thom vorticity formula
+plus the boundary stretching $F_i(\psi_j-\psi_i)$. Island-corner vorticity
+uses the average of adjacent face closures. Dissipation remains $\nu\lap q_i$,
+not an independently implemented momentum-viscosity operator.
+
+Initial velocities are the same seeded Poiseuille profiles as the INCNS case:
+with $\eta=y/8$, $k=2\pi/16$, $D=1$, and $\epsilon=10^{-3}$,
+\[
+ u_i=6U_i\eta(1-\eta)
+       -\epsilon U_iD\,\sin(kx)\frac{\pi}{8}\sin(2\pi\eta),\qquad
+ v_i=\epsilon U_iD\,k\cos(kx)\sin^2(\pi\eta).
+\]
+As in the INCNS startup these profiles do not initially satisfy the island
+condition. Discrete velocity curls are inverted with the island/channel
+Dirichlet data, then layer stretching is added to initialize PV consistently.
+The evolved initial velocity is therefore the boundary-compatible projected
+field, not the unmodified profile inside or across the obstacle.
+
+Parameters are $F_1=0.2$, $F_2=0.05$ ($L_D=2$, depth ratio four),
+$\beta=0$, $\nu_1=\nu_2=0.01$, $r_1=r_2=0$, and no external PV source.
+The nominal $U_iD/\nu_i$ are 100 and 80. Constant transport represents
+external driving; zero PV source does not mean an undriven decaying flow.
+The final time is 120 and CFL is 0.15. The square has 16 cells per side
+on the default mesh. This is a streamwise-periodic cylinder array, not
+an isolated inlet/outlet wake, and shed vortices can recirculate through
+the periodic seam. There is no analytic reference for this case; shedding
+frequency and amplitude require time-series and grid-refinement checks.
+\begin{verbatim}
+PYTHONPATH=src .venv/bin/python tutorials/qg2/main.py \
+  channel_square_island --resolution 128 --save-freq 150
+\end{verbatim}
+
+\subsection{Unforced two-layer northwest-bump example}
+
+The unforced northwest-bump case uses the geometry and initial data of
+the manufactured bump benchmark. It removes the
+sustaining forcing ($S_1=S_2=0$), sets $(r_1,r_2)=(0,0.01)$,
+and advances to $T=2$. Thus only the lower layer has direct linear drag;
+the layers remain coupled through their streamfunctions. All other
+parameters are as above. This evolving example has no claimed exact
+reference solution.
+
+\subsection{Wind-driven northwest-bump basin: idealized Gulf Stream}
+
+The case \texttt{basin\_northwest\_bump\_wind} starts from rest,
+$q_1=q_2=\psi_1=\psi_2=u_i=v_i=0$, on the unit basin with the
+attached solid $[0,1/4]\times[1/2,1]$. Its exposed southeast corner
+is at $(1/4,1/2)$, aligned with the wind-curl zero. Only this wind-driven
+case uses the taller bump; the other northwest-bump cases are unchanged.
+Both layers have $\psi_i=0$
+on all regular walls and exposed bump faces (impermeability, not no-slip).
+The time-independent wind acts only on the upper layer:
+\[
+ \frac{\tau_x}{\rho_0 H_1}=-\frac{W}{2\pi}\cos(2\pi y),\qquad
+ \tau_y=0,\qquad S_1=-W\sin(2\pi y),\qquad S_2=0,\qquad W=0.1.
+\]
+These expressions are nondimensional. The implemented source is the
+vertical wind-stress curl divided by upper-layer mass per unit area,
+not the wind stress itself. The callback is
+\texttt{northwest\_bump\_wind\_source} in \texttt{tutorials/qg2/main.py}.
+The evolution equations and parameters are
+\[
+ (q_i)_t+J(\psi_i,q_i)+5(\psi_i)_x
+ =5\times10^{-4}\nabla^2q_i-r_i\nabla^2\psi_i+S_i,
+ \quad (r_1,r_2)=(0,0.05),\quad(F_1,F_2)=(40,10).
+\]
+The default is $N=64$, CFL $0.15$, and $T=20$. The coupling ratio
+corresponds to $H_2/H_1=4$; the nondimensional baroclinic deformation
+radius is $1/\sqrt{50}$. Dissipation is the solver's PV diffusion,
+not a claim of a calibrated oceanic lateral-viscosity closure.
+
+Negative southern wind curl drives an anticyclonic subtropical gyre;
+positive northern curl drives a cyclonic subpolar gyre. Positive $\beta$
+favors western boundary intensification, with a northward subtropical
+western current and an eastward intergyre flow. The northwest bump
+perturbs the northern circulation. This is an idealized Gulf Stream--like
+spin-up experiment, not an Atlantic hindcast or a prescribed separation
+at Cape Hatteras. Aligning the bump corner and wind-curl zero at $y=0.5$
+provides a useful geometry for studying corner-associated separation,
+but does not prescribe it: the current can turn along the solid face,
+and its eventual detachment depends on the dynamics and resolution.
+There is no exact reference or assertion of equilibrium at $T=20$.
+Check longer spin-up and grid sensitivity before interpreting transport
+or separation quantitatively; the nominal diffusion--beta scale
+$(\nu/\beta)^{1/3}\simeq0.046$ spans only about three cells at $N=64$.
+The removed northwest corner breaks the forcing's full-box zero-integral
+symmetry; no artificial mean subtraction is applied to the wind curl.
+For background on wind-driven western intensification, see
+\url{https://ocw.mit.edu/courses/res-12-001-topics-in-fluid-dynamics-fall-2024/mitres_12_001_f24_essay3_pt4.pdf}.
+
+\begin{verbatim}
+PYTHONPATH=src .venv/bin/python tutorials/qg2/main.py \
+  basin_northwest_bump_wind --resolution 64 --save-freq 50
+\end{verbatim}
+This writes the same four-panel, two-layer GIF as the other examples.
+Use \texttt{--final-time} for longer spin-up and \texttt{--resolution 128}
+for a better-resolved boundary current. Exact-error \texttt{--convergence}
+is disabled for this dynamically forced case.
+
+\paragraph{Spin-up and statistical equilibrium.}
+Time is nondimensional, not days or years. $T=20$ is a short visualization
+default, not an equilibrium integration. A long-wave baroclinic crossing
+estimate is $T_R\sim L_x(F_1+F_2)/\beta=10$, while the direct lower-layer
+drag time is $1/r_2=20$. Neither measures the slowest coupled adjustment.
+For reference, unit-square PV diffusion has a lowest-mode decay time
+$1/[\nu(\pi^2+\pi^2)]\simeq101$; the bump changes the spectrum.
+As an initial experimental budget, use $T=500$ and extend to $1000$ or
+beyond if statistics still drift. These values are timescale-based
+guidance, not a demonstrated equilibration threshold.
+Compare time-weighted block means and variability of each layer's kinetic
+energy, total coupled energy, and gyre transport (streamfunction extrema)
+over successive windows of length $50$--$100$. Discard initial spin-up;
+require several successive windows without a systematic trend and with
+mean differences small compared with sampling uncertainty (a few percent
+is only a practical initial tolerance). Windows must exceed the measured
+correlation time. Check stationarity of the mean jet path as well, then
+repeat at finer resolution. A fluctuating statistically stationary state
+need not approach a time-independent field.
+
+\subsection{Wind experiment with SI inputs}
+
+The reference length and velocity are fixed at
+\[
+ L_0=3\,840\,000\ \mathrm{m},\qquad U_0=0.01\ \mathrm{m\,s^{-1}},\qquad
+ t_0=L_0/U_0=384\,000\,000\ \mathrm{s}\simeq12.17\ \mathrm{yr}.
+\]
+A year is defined as 365.25 days. Coordinates scale with $L_0$, time
+with $t_0$, velocity with $U_0$, streamfunction with $U_0L_0$, PV and
+relative vorticity with $1/t_0$, and PV sources with $1/t_0^2$.
+The conversions for coefficients are
+\[
+ \beta^*=\beta L_0t_0,\qquad r^*=rt_0,\qquad
+ \nu^*=\frac{\nu}{U_0L_0},\qquad F_i^*=F_iL_0^2,\qquad
+ L_D^*=L_D/L_0.
+\]
+The physical defaults are
+\[
+ \beta=2\times10^{-11}\ \mathrm{m^{-1}s^{-1}},\quad
+ r=4\times10^{-8}\ \mathrm{s^{-1}},\quad
+ \nu=100\ \mathrm{m^2s^{-1}},
+\]
+giving $\beta^*=29491.2$, $r^*=15.36$, and $\nu^*=0.0026041667$.
+Single-layer drag acts in that layer; two-layer drag defaults to $(0,r)$.
+Public solver geometry/callback coordinates use metres, velocities m/s,
+PV callbacks s$^{-1}$, and forcing callbacks s$^{-2}$. Public solver
+\texttt{final\_time} is in seconds; only the wind CLI's
+\texttt{--final-time} is in years. The numerical engine is available as
+\texttt{solver.dimensionless}; modifying its fields uses model units.
+Converted public field reads are snapshots, so IVP methods should be used
+to prescribe initial state. Grid boundary tuples retain their dimensionless
+selector; slip lengths are in metres and prescribed velocities in m/s.
+
+The runner uses a physical $3840\times3840$ km basin, initially at rest.
+Its default deformation radius is 38400 m on a $512^2$ grid: 5.12 spacings
+per radius and a basin-to-radius ratio of 100. It sets
+$F_1=0.8/L_D^2$, $F_2=0.2/L_D^2$, retaining the depth ratio four.
+The default attached bump has width $0.25L_0$ and height $0.5L_0$.
+With \texttt{--bump-cells K}, both dimensions are instead $K\Delta x$.
+For independent dimensions, supply both \texttt{--bump-width-cells NX}
+and \texttt{--bump-height-cells NY}; these set width $NX\Delta x$ and
+height $NY\Delta y$, respectively. Do not combine this pair with
+\texttt{--bump-cells}. For example, $NX=4$, $NY=8$ on the $128^2$ grid
+gives a northwest bump 120 km wide and 240 km tall.
+
+\paragraph{Wind stress and PV source.}
+The generic solver adds a prescribed PV source $S_i$; it does not add
+$\tau/(\rho_0H_1)$ directly to PV. The SI wind runner accepts a stationary
+stress amplitude $W=\texttt{--wind-stress}$ and analytically computes
+\[
+ \tau_x=W\sin(\pi y/L),\quad\tau_y=0,\qquad L=3840\ \mathrm{km},
+\]
+\[
+ S_1=\frac{\partial_x\tau_y-\partial_y\tau_x}{\rho_0H_1}
+     =-\frac{\pi W}{\rho_0H_1L}\cos(\pi y/L),\qquad S_2=0.
+\]
+The default stress is 0.1 N/m$^2$, density 1025 kg/m$^3$, and upper-layer
+depth 500 m, giving source amplitude $1.59633773\times10^{-13}$ s$^{-2}$.
+Here $0\le y\le L$: the stress vanishes on both zonal walls and peaks
+at midbasin. The curl is negative in the south and positive in the north.
+This SI runner's stress profile differs from the older dimensionless
+\texttt{basin\_northwest\_bump\_wind} case in \texttt{main.py}.
+The density/depth normalize the wind forcing; coupling is specified by
+$L_D$ and the fixed depth ratio. Alternatively \texttt{--wind W} directly
+specifies the amplitude multiplying $-\cos(\pi y/L)$ in s$^{-2}$.
+The options \texttt{--wind}
+and \texttt{--wind-stress} are mutually exclusive.
+
+\begin{verbatim}
+PYTHONPATH=src .venv/bin/python -u tutorials/qg2/wind_experiment.py \
+  --resolution 128 --radius 192000 --bump-cells 4 \
+  --beta 2e-11 --drag 4e-8 --nu 100 \
+  --wind-stress 0.1 --density 1025 --upper-depth 500 \
+  --final-time 20 --interval 864000
+\end{verbatim}
+Here \texttt{--radius} is metres and \texttt{--interval} seconds (ten days).
+The bump is $120\times120$ km at the northwest corner. The grid spacing
+is 30 km and the radius has 6.4 spacings, but the nominal viscous--beta
+width $(\nu/\beta)^{1/3}\simeq17.1$ km is less than one spacing.
+Thus this coarse case is exploratory: it does not resolve that boundary
+layer. The runner requires at least one spacing per deformation radius;
+it no longer rejects refinement beyond ten spacings. This check alone
+does not guarantee resolved boundary currents or meanders.
+Old dimensionless CLI values must not be reused as SI inputs.
+
+Each run creates a distinct \texttt{wind\_SI\_...} directory containing
+\texttt{config.json}, compressed snapshots, \texttt{frames.json},
+\texttt{diagnostics.jsonl}, and a four-panel GIF after completion.
+The configuration records physical inputs, reference scales, and converted
+dimensionless coefficients. For consistency with the numerical engine,
+snapshot fields \texttt{q}, \texttt{psi}, and \texttt{t} remain dimensionless;
+\texttt{t\_seconds}, \texttt{t\_years}, and \texttt{max\_velocity\_m\_s}
+are also stored. Diagnostics label physical times and maximum speeds
+explicitly, and the GIF displays metres, physical field units, and years.
+Progress reports every 30 wall-clock seconds also show the maximum speed
+in m/s. Snapshots are output data, not full restart checkpoints.
+
+\paragraph{Obstacle-free rectangular basin: \texttt{wind\_experiment2.py}.}
+This runner uses exactly the same SI parameters, initially resting two
+layers, wind stress and upper-layer source as \texttt{wind\_experiment.py},
+but removes the northwest bump entirely. The domain is the full
+$[0,L]^2$ basin. All four regular walls retain $\psi_i=0$ and the same
+Navier-slip closure; there is no irregular boundary. Both modal PV
+inverses are plain sine transforms of the five-point operator, with no
+capacitance factorization or obstacle Green-function correction.
+The command-line options are unchanged except that all bump-size options
+are absent. Outputs use the distinct prefix \texttt{wind2\_SI\_...}.
+
+Both runners pass the physical source in s$^{-2}$ to the public solver.
+With $q^*=T_0q$ and $t^*=t/T_0$, the tendency satisfies
+$q_t=T_0^{-2}q^*_{t^*}$, so the numerical engine needs
+\[
+ S_i^*=T_0^2 S_i,\qquad T_0=L_0/U_0=384000000\ \mathrm{s}.
+\]
+\texttt{QGSIInterface.set\_forcing\_terms} applies this factor exactly
+once, for both single- and two-layer solvers. The configuration's
+\texttt{dimensionless.wind} is a record of the converted amplitude, not
+an additional multiplication. For the default 0.1 N/m$^2$ stress,
+the dimensionless source amplitude is approximately $23538.96$.
+
+\subsection{Partial-slip lateral walls and runtime}
+
+Both solvers accept \texttt{slip\_length} in metres (model length in
+dimensionless mode), applied to every stationary regular wall and exposed
+grid-aligned island/bump face. With normal $n$ directed into fluid,
+\[
+ u_n=0,\qquad u_t=\ell\,\partial_n u_t,\qquad\psi=C.
+\]
+Zero length gives no slip; infinite length gives zero tangential shear.
+On a straight face, $\psi_n=\ell\zeta_w$ and $\psi_{nn}=\zeta_w$.
+Taylor expansion from the wall to its fluid neighbour at distance $h$ gives
+\[
+ \psi(h)-C=\ell h\zeta_w+\tfrac12h^2\zeta_w+O(h^3),\qquad
+ \zeta_w=\frac{2[\psi(h)-C]}{h(h+2\ell)}.
+\]
+Single-layer wall PV is $\zeta_w-L_D^{-2}C$; two-layer wall PV is
+$\zeta_{i,w}+F_i(C_j-C_i)$. Obstacle corners average adjoining face
+closures. Normal advective PV flux remains zero. Omitted north/east wall
+nodes supply actual boundary PV in the diffusion stencil. Curved-wall
+curvature terms are outside this grid-aligned rectangular geometry.
+The explicit slip length overrides the old tangential wall-PV treatment;
+regular wall tuples still specify stationary-wall data and impermeability.
+The value \texttt{None} preserves the old manufactured-case mask, while
+the old \texttt{no\_slip=True} channel option remains available.
+
+The SI wind runner now defaults to \texttt{--slip-length 30000} on all
+four outer walls and the exposed bump faces. Earlier wind runs used the
+legacy free-slip-style mask, so their boundary physics differs.
+For the completed $128^2$ run's geometry and physical coefficients:
+\begin{verbatim}
+PYTHONPATH=src MPLBACKEND=Agg .venv/bin/python -u \
+  tutorials/qg2/wind_experiment.py \
+  --resolution 128 --radius 180000 --bump-cells 4 \
+  --wind-stress 0.1 --beta 2e-11 --drag 4e-8 --nu 100 \
+  --slip-length 30000 --cfl 0.4 \
+  --final-time 100 --interval 8640000
+\end{verbatim}
+This specifies 100 years and a 100-day snapshot interval; the bump is
+$120\times120$ km. CFL 0.4 controls advection and explicit diffusion.
+The explicit beta/drag source retains a separate restriction:
+\[
+ \Delta t\le\frac{\min(\mathrm{CFL},0.15)}
+ {|\beta|\max(L_x,L_y)+\max_i r_i}.
+\]
+Increasing CFL therefore does not imply a proportional whole-run speedup.
+
+A 1200-step $128^2$ profile found sparse triangular solves using 54\% of
+stepping time, velocity reconstruction 8\%, and wall masking 7\%.
+Symmetric minimum-degree sparse ordering, reusable modal/velocity arrays,
+shared limiter increments, and cached wall indices/values reduce these
+costs. A matched legacy-physics sample decreased from 6.65 s to 4.47 s;
+the new partial-slip sample took 4.53 s. These are local profiled timings,
+not a full-century timing claim. Details and a reproduction command are
+in \texttt{tutorials/qg2/performance.md}.
+
+\subsection{Two-layer API and execution}
+
+PV callbacks return arrays with shape $(2,N_y,N_x)$. Velocity callbacks
+return a pair $(u,v)$ with that leading layer axis on each component.
+Use \texttt{set\_potential\_vorticity\_ivp(q,velocity)} to prescribe exact
+PV, or \texttt{set\_ivp(velocity)} to derive PV from the sampled velocity
+curls and coupled layer stretching. Time-independent forcing callbacks
+also return arrays with a leading layer axis.
+
+Examples from the repository root:
+\begin{verbatim}
+PYTHONPATH=src .venv/bin/python tutorials/qg2/main.py
+PYTHONPATH=src .venv/bin/python tutorials/qg2/main.py \
+  channel_square_island_manufactured --convergence
+PYTHONPATH=src .venv/bin/python tutorials/qg2/main.py \
+  basin_northwest_bump --resolution 128 --save-freq 50
+\end{verbatim}
+The CLI also accepts \texttt{--final-time}. By default, frames are saved
+every five time steps; \texttt{--save-freq N} changes this interval.
+The initial and final states are always included when saving is enabled.
+NumPy \texttt{.npz} archives store
+\texttt{t}, \texttt{q}, and \texttt{psi}; both field arrays include both
+layers. Frames are written under
+\begin{verbatim}
+tutorials/qg2/data_<case>_<resolution>/
+\end{verbatim}
+Ordinary runs also generate
+\texttt{tutorials/qg2/qg2\_<case>\_<resolution>.gif} with four panels:
+rows correspond to layers 1 and 2, and columns show streamfunction and PV.
+The time is displayed above the panels, and solid obstacles are shaded gray.
+Color scales are fixed throughout the animation and shared between layers
+for each variable. Only frames from the current run are used.
+Use \texttt{--no-gif} to skip animation; adding \texttt{--save-freq 0}
+also disables numerical frame output. Convergence runs skip GIF generation.
+From Python, call \texttt{solver.solve(save\_freq=5)} followed by
+\texttt{solver.save\_animation("qg2.gif", fps=12, dpi=100)}.
+The single-layer \texttt{tutorials/qg/convergence.py} remains a separate
+benchmark for the single-layer f-plane problem.
+
+\end{document}
