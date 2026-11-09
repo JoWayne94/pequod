@@ -16,8 +16,6 @@ tutorials/qg2/**
 !tutorials/qg2/*.md
 !tutorials/qg2/*.tex
 
-src/pequod/CMM/
-
 # Fortran source code
 src/f90pq/
 
